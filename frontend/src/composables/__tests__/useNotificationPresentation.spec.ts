@@ -82,9 +82,22 @@ afterEach(() => {
   vi.stubGlobal('localStorage', memoryStorage())
 })
 
+function channelsForMask(mask: number) {
+  return {
+    sound: !!(mask & 1),
+    vibration: !!(mask & 2),
+    popup: !!(mask & 4),
+    panel: !!(mask & 8),
+    tab_indicator: !!(mask & 16),
+    title: !!(mask & 32),
+    system: !!(mask & 64),
+    taskbar: !!(mask & 128),
+  }
+}
+
 describe('presentationGate output vector', () => {
   it('composes base, E1, active-leaf, D2, and E5 across a Cartesian sweep', () => {
-    for (let channelMask = 0; channelMask < 32; channelMask++) {
+    for (let channelMask = 0; channelMask < 256; channelMask++) {
       for (const presentationEnabled of [false, true]) {
         for (const dndLevel of ['normal', 'dot_sound', 'silent'] as const) {
           for (const focusedPane of [false, true]) {
@@ -94,13 +107,7 @@ describe('presentationGate output vector', () => {
                   for (const quiet of [false, true]) {
                     const settings = cloneSettings()
                     settings.presentation_enabled = presentationEnabled
-                    settings.channels = {
-                      sound: !!(channelMask & 1),
-                      vibration: !!(channelMask & 2),
-                      popup: !!(channelMask & 4),
-                      panel: !!(channelMask & 8),
-                      tab_indicator: !!(channelMask & 16),
-                    }
+                    settings.channels = channelsForMask(channelMask)
                     settings.dnd_level = dndLevel
                     settings.ignore_current_tab = ignoreCurrentTab
                     settings.quiet_hours = quiet
@@ -114,6 +121,8 @@ describe('presentationGate output vector', () => {
                           showPopup: settings.channels.popup,
                           playSound: settings.channels.sound,
                           vibrate: settings.channels.vibration,
+                          showSystem: settings.channels.system,
+                          flashTaskbar: settings.channels.taskbar,
                         }
                       : {
                           storeHistory: false,
@@ -121,25 +130,37 @@ describe('presentationGate output vector', () => {
                           showPopup: false,
                           playSound: false,
                           vibrate: false,
+                          showSystem: false,
+                          flashTaskbar: false,
                         }
                     if (dndLevel === 'dot_sound') {
                       expected.showPopup = false
                       expected.vibrate = false
+                      expected.showSystem = false
+                      expected.flashTaskbar = false
                     } else if (dndLevel === 'silent') {
                       expected.showPopup = false
                       expected.playSound = false
                       expected.vibrate = false
+                      expected.showSystem = false
+                      expected.flashTaskbar = false
                     }
                     if (focusedPane && foreground) {
                       expected.showPopup = false
                       expected.playSound = false
                       expected.vibrate = false
                     }
+                    if (foreground) {
+                      expected.showSystem = false
+                      expected.flashTaskbar = false
+                    }
                     if (ignoreCurrentTab && activeTabMember) expected.showPopup = false
                     if (quiet) {
                       expected.showPopup = false
                       expected.playSound = false
                       expected.vibrate = false
+                      expected.showSystem = false
+                      expected.flashTaskbar = false
                     }
 
                     expect(
@@ -160,17 +181,11 @@ describe('presentationGate output vector', () => {
   })
 
   it('seeds every base channel for every toggle combination and disables all when presentation is off', () => {
-    for (let mask = 0; mask < 32; mask++) {
+    for (let mask = 0; mask < 256; mask++) {
       for (const enabled of [false, true]) {
         const settings = cloneSettings()
         settings.presentation_enabled = enabled
-        settings.channels = {
-          sound: !!(mask & 1),
-          vibration: !!(mask & 2),
-          popup: !!(mask & 4),
-          panel: !!(mask & 8),
-          tab_indicator: !!(mask & 16),
-        }
+        settings.channels = channelsForMask(mask)
         const output = gate(settings)
         expect(output).toEqual(
           enabled
@@ -180,6 +195,8 @@ describe('presentationGate output vector', () => {
                 showPopup: settings.channels.popup,
                 playSound: settings.channels.sound,
                 vibrate: settings.channels.vibration,
+                showSystem: settings.channels.system,
+                flashTaskbar: settings.channels.taskbar,
               }
             : {
                 storeHistory: false,
@@ -187,6 +204,8 @@ describe('presentationGate output vector', () => {
                 showPopup: false,
                 playSound: false,
                 vibrate: false,
+                showSystem: false,
+                flashTaskbar: false,
               }
         )
       }
@@ -205,9 +224,36 @@ describe('presentationGate output vector', () => {
   })
 
   it.each([
-    ['normal', { showPopup: true, playSound: true, vibrate: true }],
-    ['dot_sound', { showPopup: false, playSound: true, vibrate: false }],
-    ['silent', { showPopup: false, playSound: false, vibrate: false }],
+    [
+      'normal',
+      {
+        showPopup: true,
+        playSound: true,
+        vibrate: true,
+        showSystem: false,
+        flashTaskbar: false,
+      },
+    ],
+    [
+      'dot_sound',
+      {
+        showPopup: false,
+        playSound: true,
+        vibrate: false,
+        showSystem: false,
+        flashTaskbar: false,
+      },
+    ],
+    [
+      'silent',
+      {
+        showPopup: false,
+        playSound: false,
+        vibrate: false,
+        showSystem: false,
+        flashTaskbar: false,
+      },
+    ],
   ] as const)('applies E1 %s without changing history or indicator', (level, emit) => {
     const settings = cloneSettings()
     settings.dnd_level = level
@@ -227,6 +273,29 @@ describe('presentationGate output vector', () => {
       showPopup: false,
       playSound: false,
       vibrate: false,
+      showSystem: false,
+      flashTaskbar: false,
+    })
+  })
+
+  it('only sends out-of-app signals while the app is not foreground', () => {
+    const settings = cloneSettings()
+    settings.channels.system = true
+    settings.channels.taskbar = true
+
+    expect(gate(settings, { foreground: false })).toMatchObject({
+      showSystem: true,
+      flashTaskbar: true,
+    })
+    expect(gate(settings, { foreground: true })).toMatchObject({
+      showSystem: false,
+      flashTaskbar: false,
+    })
+
+    settings.quiet_hours = { start: '11:00', end: '13:00' }
+    expect(gate(settings, { foreground: false })).toMatchObject({
+      showSystem: false,
+      flashTaskbar: false,
     })
   })
 
@@ -272,6 +341,8 @@ describe('quiet hours', () => {
       showPopup: false,
       playSound: false,
       vibrate: false,
+      showSystem: false,
+      flashTaskbar: false,
     })
   })
 })
@@ -292,6 +363,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: true,
         vibrate: true,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: (_event, output) => {
         if (output.showPopup) popup()
@@ -321,6 +394,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: true,
         vibrate: true,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: (event) => {
         fired.push(event)
@@ -344,6 +419,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: true,
         vibrate: true,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: (event) => {
         fired.push(event)
@@ -371,6 +448,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: true,
         vibrate: true,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: fired,
     })
@@ -391,6 +470,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: false,
         vibrate: false,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: () => dismiss,
     })
@@ -412,6 +493,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: false,
         vibrate: false,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: () => dismiss,
     })
@@ -436,6 +519,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: false,
         vibrate: false,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: (event) => (event.notifId ? dismissNotif : dismissPane),
     })
@@ -461,6 +546,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: false,
         vibrate: false,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: (event) => (event.eventSeq === '1' ? firstDismiss : secondDismiss),
     })
@@ -486,6 +573,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: false,
         vibrate: false,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: (event) => (event.eventSeq === '1' ? lowerDismiss : higherDismiss),
     })
@@ -513,6 +602,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: false,
         vibrate: false,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: (_event, _output, retireEntry) => {
         retire = retireEntry
@@ -541,6 +632,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: false,
         vibrate: false,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: (event, _output, retire) => {
         retirements.push(retire)
@@ -570,6 +663,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: false,
         vibrate: false,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: (event) => (event.paneId ? dismissPane : dismissNotif),
     })
@@ -639,6 +734,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: false,
         vibrate: false,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: (event) => {
         fired.push(event)
@@ -661,6 +758,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: true,
         vibrate: true,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: fired,
     })
@@ -686,6 +785,8 @@ describe('presentation coalesce scheduler', () => {
         showPopup: true,
         playSound: false,
         vibrate: false,
+        showSystem: false,
+        flashTaskbar: false,
       }),
       fire: fired,
     })
@@ -748,6 +849,9 @@ describe('guarded local presentation store', () => {
       popup: true,
       panel: false,
       tab_indicator: false,
+      title: true,
+      system: false,
+      taskbar: false,
     })
     expect(loaded.dnd_level).toBe('silent')
   })
@@ -798,6 +902,9 @@ describe('guarded local presentation store', () => {
       popup: false,
       panel: false,
       tab_indicator: true,
+      title: true,
+      system: false,
+      taskbar: false,
     })
     expect(localStorage.getItem(NOTIFICATION_PRESENTATION_MIGRATION_KEY)).toBe('1')
     ;(serverSettings as any).notification = {
@@ -813,6 +920,9 @@ describe('guarded local presentation store', () => {
       popup: false,
       panel: false,
       tab_indicator: true,
+      title: true,
+      system: false,
+      taskbar: false,
     })
   })
 
@@ -858,6 +968,9 @@ describe('guarded local presentation store', () => {
       popup: true,
       panel: true,
       tab_indicator: false,
+      title: true,
+      system: false,
+      taskbar: false,
     })
     expect(localStorage.getItem(NOTIFICATION_PRESENTATION_MIGRATION_KEY)).toBe('1')
   })

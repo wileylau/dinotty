@@ -99,6 +99,50 @@
           <span class="toggle-track"><span class="toggle-thumb"></span></span>
         </label>
       </div>
+      <div class="settings-row">
+        <div class="settings-row-label">
+          <label>{{ t('notification.tabTitle') }}</label>
+          <p class="settings-hint">{{ t('notification.tabTitleHint') }}</p>
+        </div>
+        <label class="toggle">
+          <input v-model="presentation.channels.title" type="checkbox" />
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        </label>
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-label">
+          <label>{{ t('notification.system') }}</label>
+          <p class="settings-hint">{{ t('notification.systemHint') }}</p>
+        </div>
+        <label class="toggle">
+          <input
+            type="checkbox"
+            :checked="presentation.channels.system"
+            :disabled="systemPermission === 'unsupported'"
+            @change="onSystemToggle"
+          />
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        </label>
+      </div>
+      <p v-if="systemPermission === 'denied'" class="settings-hint">
+        {{ t('notification.systemDenied') }}
+      </p>
+      <p v-else-if="systemPermission === 'unsupported'" class="settings-hint">
+        {{ isTauriClient ? t('notification.systemDesktopLater') : t('notification.systemUnsupported') }}
+      </p>
+      <p v-else-if="systemPermission === 'default' && !presentation.channels.system" class="settings-hint">
+        {{ t('notification.systemPermissionHint') }}
+      </p>
+      <div v-if="isTauriClient" class="settings-row">
+        <div class="settings-row-label">
+          <label>{{ t('notification.taskbar') }}</label>
+          <p class="settings-hint">{{ t('notification.taskbarHint') }}</p>
+        </div>
+        <label class="toggle">
+          <input v-model="presentation.channels.taskbar" type="checkbox" />
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        </label>
+      </div>
     </div>
 
     <div class="settings-group">
@@ -271,12 +315,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { Play, Plus, X } from 'lucide-vue-next'
 import { useSettings } from '../../composables/useSettings'
 import CollapsibleSection from './CollapsibleSection.vue'
 import SegmentedControl from '../ui/SegmentedControl.vue'
 import { useI18n } from '../../composables/useI18n'
+import { isTauri } from '../../composables/useTransport'
+import {
+  getSystemNotificationPermission,
+  requestSystemNotificationPermission,
+  type SystemNotificationPermission,
+} from '../../composables/useSystemNotification'
 import {
   playSound,
   getBuiltinSoundNames,
@@ -293,6 +343,23 @@ const { t } = useI18n()
 
 const cfg = computed(() => settings.notification)
 const { settings: presentation, isEphemeral } = useNotificationPresentation()
+const isTauriClient = isTauri()
+const systemPermission = ref<SystemNotificationPermission>(getSystemNotificationPermission())
+onMounted(() => {
+  systemPermission.value = getSystemNotificationPermission()
+})
+
+async function onSystemToggle(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (!input.checked) {
+    presentation.channels.system = false
+    return
+  }
+  const state = await requestSystemNotificationPermission()
+  systemPermission.value = state
+  presentation.channels.system = state === 'granted'
+  input.checked = presentation.channels.system
+}
 const builtinNames = getBuiltinSoundNames()
 const soundTypes: NotificationType[] = ['info', 'success', 'warning', 'error', 'urgent']
 const notifTypes = ['info', 'success', 'warning', 'error', 'urgent']
@@ -398,6 +465,14 @@ async function sendTest() {
 </script>
 
 <style scoped>
+.settings-row-label {
+  min-width: 0;
+}
+
+.settings-row-label > .settings-hint {
+  margin: 2px 0 0;
+  line-height: 1.4;
+}
 .sub {
   padding-left: 16px;
 }

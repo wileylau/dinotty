@@ -794,6 +794,23 @@ export default {
   'notification.vibration': 'Vibration (mobile)',
   'notification.popup': 'Popup',
   'notification.tabIndicator': 'Tab Indicator',
+  'notification.tabTitle': 'Tab title',
+  'notification.tabTitleHint': 'Prefix the browser tab title with the unread count.',
+  'notification.system': 'System notifications',
+  'notification.systemHint':
+    'Show a desktop notification when a task finishes while Dinotty is in the background.',
+  'notification.systemPermissionHint':
+    'You will be asked for notification permission when you turn this on.',
+  'notification.systemDenied':
+    'Blocked — allow notifications for this site in your browser or OS settings.',
+  'notification.systemUnsupported': 'This browser does not support system notifications.',
+  'notification.systemDesktopLater': 'Native desktop notifications are coming in a later build.',
+  'notification.systemNudge': 'Get notified when a task finishes while you are elsewhere.',
+  'notification.systemNudgeEnable': 'Enable',
+  'notification.systemNudgeDismiss': 'Dismiss',
+  'notification.taskbar': 'Flash taskbar',
+  'notification.taskbarHint':
+    'Flash the desktop taskbar for background notifications (desktop only).',
   'notification.presentationBehavior': 'Presentation behavior',
   'notification.dndLevel': 'DND level',
   'notification.dnd.normal': 'Normal',

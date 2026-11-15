@@ -17,6 +17,23 @@ describe('window title', () => {
     expect(formatWindowTitle('   ')).toBe('Dinotty')
   })
 
+  it('prefixes unread notifications as a count', () => {
+    expect(formatWindowTitle('Project Atlas', { unread: 1 })).toBe('(1) Project Atlas')
+    expect(formatWindowTitle('Project Atlas', { unread: 12 })).toBe('(12) Project Atlas')
+    expect(formatWindowTitle('', { unread: 2 })).toBe('(2) Dinotty')
+  })
+
+  it('renders a dot instead of the count for dot-only DND', () => {
+    expect(formatWindowTitle('Project Atlas', { unread: 3, dotOnly: true })).toBe(
+      '● Project Atlas'
+    )
+  })
+
+  it('ignores invalid or cleared unread counts', () => {
+    expect(formatWindowTitle('Project Atlas', { unread: 0 })).toBe('Project Atlas')
+    expect(formatWindowTitle('Project Atlas', { unread: -2 })).toBe('Project Atlas')
+  })
+
   it('falls back to the window API when the command fails', async () => {
     const invoke = vi.fn(async () => {
       throw new Error('command unavailable')

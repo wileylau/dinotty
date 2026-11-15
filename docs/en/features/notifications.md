@@ -32,6 +32,23 @@ Each notification card shows a `workspace › tab / pane` label for easy source 
 
 Jump requires the sender to include `pane_id` when calling the HTTP API (see below).
 
+### Tab title, badge and system notifications
+
+Beyond the in-app toast, **Settings → Notification → Channels** can enable three out-of-app signals:
+
+| Signal | Behaviour |
+| --- | --- |
+| **Tab title** | While notifications are unread, the browser tab (and desktop window) title becomes `(3) Workspace`. DND `dot + sound` shows `● Workspace`; `silent` leaves the title unchanged. |
+| **App badge** | On installed PWAs that support the Badging API (Safari 16.4+ Home Screen, Chrome/Edge), the app icon/taskbar shows the unread count. Follows the tab-title switch. |
+| **System notifications** | Off by default. Turning it on asks the browser for permission and shows a desktop/OS notification when a task finishes while Dinotty is in the background. Clicking the notification focuses Dinotty and, in the browser, jumps to the source pane. |
+| **Flash taskbar** | Desktop only, off by default. Flashes the Windows taskbar button for background notifications. |
+
+Notes:
+
+- System notifications are suppressed while Dinotty is focused, during quiet hours, and at the `silent` / `dot + sound` DND levels; the in-app toast already covers the visible case.
+- Desktop (Tauri) native notifications are not available yet — WebView2 has no Web Notifications API; they will arrive with a later build. Taskbar flash works today.
+- iOS: notifications need permission and only arrive while the PWA is running. iOS suspends background web apps and drops the WebSocket; delivering them while the app is closed needs a push service (VAPID), which is not implemented. Unread counts are restored when you return.
+
 ## Terminal Notification Auto-Detection (Zero Config)
 
 Dinotty parses each terminal pane's output stream on the backend and converts terminal notification escape sequences emitted by programs into notifications - **no hooks or extra configuration required**:

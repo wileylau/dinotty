@@ -114,3 +114,32 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(networkFirst(request, SHELL_CACHE))
   }
 })
+
+// System notification click: focus the running app and let it jump to the pane
+// that produced the notification. A closed app just opens normally; the unread
+// badge in the bell panel still shows where it came from.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const paneId =
+    event.notification.data && typeof event.notification.data.paneId === 'string'
+      ? event.notification.data.paneId
+      : ''
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      const client = windows.find((candidate) => {
+        try {
+          return new URL(candidate.url).origin === self.location.origin
+        } catch {
+          return false
+        }
+      })
+      if (!client) {
+        await self.clients.openWindow('/')
+        return
+      }
+      await client.focus()
+      if (paneId) client.postMessage({ type: 'dinotty-notification-click', paneId })
+    })()
+  )
+})

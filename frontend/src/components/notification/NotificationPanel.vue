@@ -4,6 +4,21 @@
       <span class="panel-title">{{ t('notification.title') }}</span>
       <button class="panel-close" @click="panelVisible = false">&times;</button>
     </div>
+    <div v-if="showSystemNudge" class="panel-nudge">
+      <span class="panel-nudge-text">{{ t('notification.systemNudge') }}</span>
+      <div class="panel-nudge-actions">
+        <button class="panel-nudge-enable" :disabled="nudgeBusy" @click="enableSystemNotifications">
+          {{ t('notification.systemNudgeEnable') }}
+        </button>
+        <button
+          class="panel-nudge-dismiss"
+          :title="t('notification.systemNudgeDismiss')"
+          @click="dismissNudge"
+        >
+          &times;
+        </button>
+      </div>
+    </div>
     <div class="panel-list">
       <NotificationCard
         v-for="n in notifications"
@@ -26,7 +41,15 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
 import { useNotification } from '../../composables/useNotification'
+import { useNotificationPresentation } from '../../composables/useNotificationPresentation'
+import {
+  getSystemNotificationPermission,
+  requestSystemNotificationPermission,
+  type SystemNotificationPermission,
+} from '../../composables/useSystemNotification'
+import { isTauri } from '../../composables/useTransport'
 import { useI18n } from '../../composables/useI18n'
 import NotificationCard from './NotificationCard.vue'
 
@@ -38,6 +61,54 @@ defineEmits<{ 'goto-pane': [paneId: string] }>()
 
 const { notifications, panelVisible, dismissOne, clearAll } = useNotification()
 const { t } = useI18n()
+const { settings: presentation } = useNotificationPresentation()
+
+const SYSTEM_NUDGE_KEY = 'dinotty_notification_system_nudge_v1'
+const systemPermission = ref<SystemNotificationPermission>(getSystemNotificationPermission())
+const nudgeDismissed = ref(readNudgeDismissed())
+const nudgeBusy = ref(false)
+
+function readNudgeDismissed(): boolean {
+  try {
+    return localStorage.getItem(SYSTEM_NUDGE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+const showSystemNudge = computed(
+  () =>
+    !isTauri() &&
+    systemPermission.value === 'default' &&
+    !presentation.channels.system &&
+    !nudgeDismissed.value
+)
+
+watch(panelVisible, (visible) => {
+  if (visible) systemPermission.value = getSystemNotificationPermission()
+})
+
+async function enableSystemNotifications() {
+  if (nudgeBusy.value) return
+  nudgeBusy.value = true
+  try {
+    const state = await requestSystemNotificationPermission()
+    systemPermission.value = state
+    presentation.channels.system = state === 'granted'
+    if (state === 'granted') dismissNudge()
+  } finally {
+    nudgeBusy.value = false
+  }
+}
+
+function dismissNudge() {
+  nudgeDismissed.value = true
+  try {
+    localStorage.setItem(SYSTEM_NUDGE_KEY, '1')
+  } catch {
+    /* storage unavailable: the nudge returns on the next session */
+  }
+}
 </script>
 
 <style scoped>
@@ -123,5 +194,55 @@ const { t } = useI18n()
 .panel-clear:hover {
   color: var(--fg);
   border-color: var(--fg-muted);
+}
+.panel-nudge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--divider, #333);
+  background: var(--bg-input, rgba(255, 255, 255, 0.04));
+  flex-shrink: 0;
+}
+.panel-nudge-text {
+  flex: 1;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fg-muted, #888);
+}
+.panel-nudge-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.panel-nudge-enable {
+  padding: 3px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+}
+.panel-nudge-enable:hover {
+  background: var(--accent);
+  color: var(--bg-surface, #1e1e2e);
+}
+.panel-nudge-enable:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.panel-nudge-dismiss {
+  background: none;
+  border: none;
+  color: var(--fg-muted, #888);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.panel-nudge-dismiss:hover {
+  color: var(--fg);
 }
 </style>

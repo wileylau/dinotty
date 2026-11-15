@@ -88,6 +88,9 @@ describe('notification presentation server save boundary', () => {
       popup: true,
       panel: false,
       tab_indicator: true,
+      title: true,
+      system: false,
+      taskbar: false,
     }
     local.settings.sounds.info = { source: 'custom', value: 'local-only', volume: 0.1 }
     local.settings.dnd_level = 'silent'

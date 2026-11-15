@@ -18,6 +18,7 @@ import {
   type PresentationOutput,
 } from './useNotificationPresentation'
 import { getClientId, onNotification, sendMarkRead } from './useSyncWebSocket'
+import { flashTaskbar, sendSystemNotification } from './useSystemNotification'
 
 // ── Sound (moved to useNotificationAudio) ──────────────
 export type { SoundConfig } from './useNotificationAudio'
@@ -300,6 +301,19 @@ function emitPresentation(item: NotificationItem, output: PresentationOutput, re
   if (output.vibrate && typeof navigator !== 'undefined' && navigator.vibrate) {
     navigator.vibrate(item.type === 'urgent' ? [100, 50, 100, 50, 100] : [100])
   }
+  if (output.showSystem) {
+    const paneId = item.paneId
+    void sendSystemNotification({
+      title: item.title || 'Dinotty',
+      body: item.body,
+      paneId,
+      onActivate: () => {
+        if (paneId && goToHandler) goToHandler(paneId)
+        else panelVisible.value = true
+      },
+    })
+  }
+  if (output.flashTaskbar) void flashTaskbar()
   if (output.showPopup) return showToast(item, retire)
 }
 

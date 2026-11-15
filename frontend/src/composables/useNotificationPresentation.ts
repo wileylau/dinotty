@@ -13,6 +13,9 @@ export interface NotificationPresentationSettings {
     popup: boolean
     panel: boolean
     tab_indicator: boolean
+    title: boolean
+    system: boolean
+    taskbar: boolean
   }
   sounds: Record<NotificationType, SoundConfig>
   dnd_level: DndLevel
@@ -34,6 +37,8 @@ export interface PresentationOutput {
   showPopup: boolean
   playSound: boolean
   vibrate: boolean
+  showSystem: boolean
+  flashTaskbar: boolean
 }
 
 export interface PresentationGateContext {
@@ -59,7 +64,16 @@ const DEFAULT_SOUNDS: Record<NotificationType, SoundConfig> = {
 
 export const DEFAULT_NOTIFICATION_PRESENTATION_SETTINGS: NotificationPresentationSettings = {
   presentation_enabled: true,
-  channels: { sound: true, vibration: true, popup: true, panel: true, tab_indicator: true },
+  channels: {
+    sound: true,
+    vibration: true,
+    popup: true,
+    panel: true,
+    tab_indicator: true,
+    title: true,
+    system: false,
+    taskbar: false,
+  },
   sounds: DEFAULT_SOUNDS,
   dnd_level: 'normal',
   ignore_current_tab: true,
@@ -153,6 +167,22 @@ function normalizeSettings(value: unknown): NotificationPresentationSettings | n
     if (typeof value.channels.popup !== 'boolean') return null
     popup = value.channels.popup
   }
+  // Newer channels are optional so existing device settings keep loading.
+  let title = true
+  if (Object.prototype.hasOwnProperty.call(value.channels, 'title')) {
+    if (typeof value.channels.title !== 'boolean') return null
+    title = value.channels.title
+  }
+  let system = false
+  if (Object.prototype.hasOwnProperty.call(value.channels, 'system')) {
+    if (typeof value.channels.system !== 'boolean') return null
+    system = value.channels.system
+  }
+  let taskbar = false
+  if (Object.prototype.hasOwnProperty.call(value.channels, 'taskbar')) {
+    if (typeof value.channels.taskbar !== 'boolean') return null
+    taskbar = value.channels.taskbar
+  }
   if (
     typeof value.presentation_enabled !== 'boolean' ||
     typeof value.channels.sound !== 'boolean' ||
@@ -177,7 +207,7 @@ function normalizeSettings(value: unknown): NotificationPresentationSettings | n
     return null
   return {
     ...value,
-    channels: { ...value.channels, popup },
+    channels: { ...value.channels, popup, title, system, taskbar },
   } as unknown as NotificationPresentationSettings
 }
 
@@ -413,6 +443,8 @@ export function presentationGate(
         showPopup: settings.channels.popup,
         playSound: settings.channels.sound,
         vibrate: settings.channels.vibration,
+        showSystem: settings.channels.system,
+        flashTaskbar: settings.channels.taskbar,
       }
     : {
         storeHistory: false,
@@ -420,21 +452,34 @@ export function presentationGate(
         showPopup: false,
         playSound: false,
         vibrate: false,
+        showSystem: false,
+        flashTaskbar: false,
       }
 
   if (settings.dnd_level === 'dot_sound') {
     output.showPopup = false
     output.vibrate = false
+    output.showSystem = false
+    output.flashTaskbar = false
   } else if (settings.dnd_level === 'silent') {
     output.showPopup = false
     output.playSound = false
     output.vibrate = false
+    output.showSystem = false
+    output.flashTaskbar = false
   }
 
   if (event.paneId && event.paneId === ctx.focusedPaneId && ctx.isAppForeground) {
     output.showPopup = false
     output.playSound = false
     output.vibrate = false
+  }
+
+  // Out-of-app signals are only useful when Dinotty is not the foreground app;
+  // the in-app toast already covers the visible case.
+  if (ctx.isAppForeground) {
+    output.showSystem = false
+    output.flashTaskbar = false
   }
 
   if (event.paneId && settings.ignore_current_tab && ctx.activeTabPaneIds.includes(event.paneId)) {
@@ -445,6 +490,8 @@ export function presentationGate(
     output.showPopup = false
     output.playSound = false
     output.vibrate = false
+    output.showSystem = false
+    output.flashTaskbar = false
   }
   return output
 }

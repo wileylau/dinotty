@@ -40,6 +40,7 @@ import {
   aggregateSeverity,
 } from './useNotification'
 import { getIsAppForeground, onAppForegroundGain } from './useAppForeground'
+import { setAppBadge } from './useSystemNotification'
 import { usePluginLoader, handlePluginChanged } from './usePluginLoader'
 import { usePluginLauncher } from './usePluginLauncher'
 import { usePluginFloatWindowsStore } from '../stores/pluginFloatWindows'
@@ -545,14 +546,29 @@ export function useAppCore(options: AppCoreOptions) {
     { immediate: true }
   )
   watch(
-    () => activeWorkspaceName.value,
-    (wsName) => {
-      const title = updateDocumentTitle(wsName)
+    [
+      () => activeWorkspaceName.value,
+      () => notif.unreadAttentionCount.value,
+      () => presentationSettings.channels.title,
+      () => presentationSettings.dnd_level,
+    ],
+    () => {
+      const unread = notif.unreadAttentionCount.value
+      const dotOnly = presentationSettings.dnd_level === 'dot_sound'
+      const silent = presentationSettings.dnd_level === 'silent'
+      const showUnread = presentationSettings.channels.title && !silent
+      const title = updateDocumentTitle(activeWorkspaceName.value, document, {
+        unread: showUnread ? unread : 0,
+        dotOnly,
+      })
       if (isTauri()) {
         void setTauriWindowTitle(title, tauriInvoke, () =>
           (window as any).__TAURI__?.window?.getCurrentWindow?.()
         )
       }
+      // Badging API: count on supported installs, a dot for dot-only DND, and
+      // clear once everything is read.
+      setAppBadge(showUnread ? unread : 0, dotOnly)
     },
     { immediate: true }
   )
@@ -704,6 +720,14 @@ export function useAppCore(options: AppCoreOptions) {
 
   // Wire up toast notification direct-jump handler
   notif.setGoToPaneHandler((paneId: string) => revealPane(paneId))
+
+  // A system notification click (service worker path) posts back to the page.
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event: MessageEvent) => {
+      const data = event.data as { type?: string; paneId?: string } | null
+      if (data?.type === 'dinotty-notification-click' && data.paneId) revealPane(data.paneId)
+    })
+  }
 
   function onTitleChange(paneId: string, title: string) {
     // Find terminal tab containing this leaf pane
