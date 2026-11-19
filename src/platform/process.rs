@@ -8,18 +8,21 @@ pub trait CommandNoWindowExt {
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 #[cfg(windows)]
-const DETACHED_PROCESS: u32 = 0x0000_0008;
-#[cfg(windows)]
-// GUI builds have no parent console; detach background CLI tools so Windows
-// does not create transient conhost windows for each short-lived command.
-const NO_CONSOLE_WINDOW_FLAGS: u32 = CREATE_NO_WINDOW | DETACHED_PROCESS;
+const NO_WINDOW_FLAGS: u32 = CREATE_NO_WINDOW;
+// Important: do NOT also pass DETACHED_PROCESS here. Windows ignores
+// CREATE_NO_WINDOW when the process is detached, which leaves the child with
+// no console at all. Any console grandchild it spawns (curl, git helpers,
+// compiler tools, hook scripts) then gets a brand-new VISIBLE console that
+// flashes on screen and disappears when the grandchild exits.
+// CREATE_NO_WINDOW alone keeps the child in a hidden console, so its children
+// inherit the hidden one instead of allocating a visible window.
 
 impl CommandNoWindowExt for std::process::Command {
     fn no_window(&mut self) -> &mut Self {
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
-            self.creation_flags(NO_CONSOLE_WINDOW_FLAGS);
+            self.creation_flags(NO_WINDOW_FLAGS);
         }
         self
     }
@@ -28,7 +31,7 @@ impl CommandNoWindowExt for std::process::Command {
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
-            self.creation_flags(CREATE_NO_WINDOW);
+            self.creation_flags(NO_WINDOW_FLAGS);
         }
         self
     }
@@ -38,7 +41,7 @@ impl CommandNoWindowExt for tokio::process::Command {
     fn no_window(&mut self) -> &mut Self {
         #[cfg(windows)]
         {
-            self.creation_flags(NO_CONSOLE_WINDOW_FLAGS);
+            self.creation_flags(NO_WINDOW_FLAGS);
         }
         self
     }
@@ -46,7 +49,7 @@ impl CommandNoWindowExt for tokio::process::Command {
     fn no_window_with_stdio(&mut self) -> &mut Self {
         #[cfg(windows)]
         {
-            self.creation_flags(CREATE_NO_WINDOW);
+            self.creation_flags(NO_WINDOW_FLAGS);
         }
         self
     }
@@ -187,7 +190,14 @@ fn resolve_windows_native_program_from(
 mod tests {
     use std::{ffi::OsStr, fs};
 
-    use super::resolve_windows_native_program_from;
+    use super::{resolve_windows_native_program_from, CREATE_NO_WINDOW, NO_WINDOW_FLAGS};
+
+    #[test]
+    fn no_window_flags_do_not_detach_the_child_console() {
+        // DETACHED_PROCESS makes Windows ignore CREATE_NO_WINDOW, so any
+        // console grandchild allocates a new VISIBLE console (the flash).
+        assert_eq!(NO_WINDOW_FLAGS, CREATE_NO_WINDOW);
+    }
 
     #[test]
     fn bare_program_skips_extensionless_and_script_shims_for_a_later_exe() {
